@@ -41,6 +41,7 @@
   .qa-paste:active{ background:var(--violet); }
   .qa-input{ flex:1; min-width:0; font-family:inherit; font-size:14.5px; padding:11px 13px; border:1px solid var(--line); border-radius:11px; background:#FBFAF9; }
   .qa-input::placeholder{ color:#ABA5B3; }
+  .qa-note{ width:100%; display:block; margin-bottom:13px; }
   .qa-lbl{ font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:600; margin:0 0 8px 2px; }
   .qa-cats{ display:flex; flex-wrap:wrap; gap:7px; margin-bottom:13px; }
   .qa-chip{ font-size:13px; font-weight:500; padding:7px 13px; border-radius:999px; border:1px solid var(--line); background:#fff; white-space:nowrap; }
@@ -142,6 +143,7 @@
       <button class="qa-paste" id="pasteBtn">📋 Dán</button>
       <input class="qa-input" id="link" placeholder="Dán link TikTok / IG / YouTube…" inputmode="url" />
     </div>
+    <input class="qa-input qa-note" id="note" placeholder="Ghi chú (tuỳ chọn) — VD: transition đẹp, hook mạnh…" />
     <div class="qa-lbl">Danh mục</div>
     <div class="qa-cats" id="qaCats"></div>
     <button class="qa-save" id="save" disabled>Lưu video</button>
@@ -175,7 +177,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = window.SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || "";
-const CATEGORIES = ["📖 Storytelling","🎵 Âm thanh","💡 Ý tưởng","💅 Nail","🧑‍💻 Edit style","⭐️ Aesthetic","🧑‍🎨 Design project","👩🏻‍🎨 Design edit","🍰 Food/drink","🕺 Short content","🤣 Funny content"];
+const CATEGORIES = ["📖 Storytelling","🎵 Âm thanh","💡 Ý tưởng","💅 Nail","🧑‍💻 Edit style","⭐️ Aesthetic","🧑‍🎨 Design project","👩🏻‍🎨 Design edit","🍰 Food/drink","🕺 Short content","🤣 Funny content","⚡️ Giống luôn"];
 const UNTAGGED = "__untagged__";
 const configured = SUPABASE_URL.startsWith("http") && SUPABASE_ANON_KEY.length > 20;
 const sb = configured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
@@ -229,14 +231,15 @@ function renderQaCats(){ qaCats.innerHTML=""; CATEGORIES.forEach(c=>{ const b=do
 saveBtn.onclick=async()=>{
   const url=linkInput.value.trim(); if(!url||!configured)return;
   const platform=detectPlatform(url);
-  const payload={ url, note:"", platform, categories:Array.from(picked), thumb:null };
+  const payload={ url, note:$("note").value.trim(), platform, categories:Array.from(picked), thumb:null };
   saveBtn.disabled=true; saveBtn.textContent="Đang lưu…";
   const row=await addVideo(payload);
   saveBtn.textContent="Lưu video";
-  if(row){ videos.unshift(row); linkInput.value=""; picked.clear(); renderQaCats(); activeCat="all"; render(); runAutoThumb(row.id); }
+  if(row){ videos.unshift(row); linkInput.value=""; $("note").value=""; picked.clear(); renderQaCats(); activeCat="all"; render(); runAutoThumb(row.id); }
   else saveBtn.disabled=false;
 };
 linkInput.addEventListener("keydown",e=>{ if(e.key==="Enter")saveBtn.click(); });
+$("note").addEventListener("keydown",e=>{ if(e.key==="Enter")saveBtn.click(); });
 
 const catList=$("catList");
 function countFor(c){ if(c==="all")return videos.length; if(c===UNTAGGED)return videos.filter(v=>!v.categories||!v.categories.length).length; return videos.filter(v=>v.categories&&v.categories.includes(c)).length; }
