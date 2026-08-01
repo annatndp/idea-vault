@@ -1,4 +1,4 @@
-const CACHE = "idea-vault-v2";
+const CACHE = "idea-vault-v3";
 const SHELL = ["./","./index.html","./manifest.webmanifest","./config.js","./icon-192.png","./icon-512.png","./apple-touch-icon.png"];
 
 self.addEventListener("install", e => {
