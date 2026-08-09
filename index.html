@@ -209,7 +209,7 @@ const sb = configured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 let videos = [];
 let picked = new Set();
-let activeCat = "all";
+let activeCats = new Set();
 let searchTerm = "";
 const fetching = new Set();
 
@@ -298,7 +298,7 @@ saveBtn.onclick=async()=>{
   saveBtn.disabled=true; saveBtn.textContent="Đang lưu…";
   const row=await addVideo(payload);
   saveBtn.textContent="Lưu video";
-  if(row){ videos.unshift(row); linkInput.value=""; $("note").value=""; picked.clear(); renderQaCats(); activeCat="all"; render(); runAutoThumb(row.id); }
+  if(row){ videos.unshift(row); linkInput.value=""; $("note").value=""; picked.clear(); renderQaCats(); activeCats.clear(); render(); runAutoThumb(row.id); }
   else saveBtn.disabled=false;
 };
 linkInput.addEventListener("keydown",e=>{ if(e.key==="Enter")saveBtn.click(); });
@@ -307,18 +307,19 @@ $("note").addEventListener("keydown",e=>{ if(e.key==="Enter")saveBtn.click(); })
 const catList=$("catList");
 function countFor(c){ if(c==="all")return videos.length; if(c===UNTAGGED)return videos.filter(v=>!v.categories||!v.categories.length).length; return videos.filter(v=>v.categories&&v.categories.includes(c)).length; }
 function renderCats(){ catList.innerHTML="";
-  const mk=(label,val)=>{ const b=document.createElement("button"); b.className="cat"+(activeCat===val?" on":""); b.innerHTML='<span>'+esc(label)+'</span><span class="n">'+countFor(val)+'</span>'; b.onclick=()=>{ activeCat=val; searchTerm=""; $("searchInput").value=""; render(); }; return b; };
-  catList.appendChild(mk("Tất cả","all"));
-  CATEGORIES.forEach(t=>catList.appendChild(mk(t,t)));
-  if(countFor(UNTAGGED)>0) catList.appendChild(mk("Chưa phân loại",UNTAGGED));
+  const mk=(label,val,on)=>{ const b=document.createElement("button"); b.className="cat"+(on?" on":""); b.innerHTML='<span>'+esc(label)+'</span><span class="n">'+countFor(val)+'</span>'; b.onclick=()=>{ if(val==="all"){ activeCats.clear(); } else { activeCats.has(val)?activeCats.delete(val):activeCats.add(val); } render(); }; return b; };
+  catList.appendChild(mk("Tất cả","all",activeCats.size===0));
+  CATEGORIES.forEach(t=>catList.appendChild(mk(t,t,activeCats.has(t))));
+  if(countFor(UNTAGGED)>0) catList.appendChild(mk("Chưa phân loại",UNTAGGED,activeCats.has(UNTAGGED)));
 }
 $("searchInput").addEventListener("input",e=>{ searchTerm=e.target.value.toLowerCase(); renderGrid(); });
-function visible(){ return videos.filter(v=>{ let ok; if(activeCat==="all")ok=true; else if(activeCat===UNTAGGED)ok=!v.categories||!v.categories.length; else ok=v.categories&&v.categories.includes(activeCat); const s=!searchTerm||(v.note||"").toLowerCase().includes(searchTerm)||(v.url||"").toLowerCase().includes(searchTerm); return ok&&s; }); }
+function visible(){ return videos.filter(v=>{ let ok; if(activeCats.size===0)ok=true; else { const cats=v.categories||[]; ok=[...activeCats].some(sel=>sel===UNTAGGED?cats.length===0:cats.includes(sel)); } const s=!searchTerm||(v.note||"").toLowerCase().includes(searchTerm)||(v.url||"").toLowerCase().includes(searchTerm); return ok&&s; }); }
 
 const grid=$("grid"), catTitle=$("catTitle"), catSub=$("catSub"), totalCount=$("totalCount");
 function renderGrid(){
   const list=visible();
-  catTitle.childNodes[0].nodeValue=(activeCat==="all"?"Tất cả":activeCat===UNTAGGED?"Chưa phân loại":activeCat)+" ";
+  let title; if(activeCats.size===0)title="Tất cả"; else if(activeCats.size===1){ const c=[...activeCats][0]; title=c===UNTAGGED?"Chưa phân loại":c; } else title="Đã chọn "+activeCats.size+" mục";
+  catTitle.childNodes[0].nodeValue=title+" ";
   catSub.textContent=list.length+" video"; totalCount.textContent=videos.length+" clip";
   grid.innerHTML="";
   if(!configured){ grid.innerHTML='<div class="empty-state"><div class="glyph">🔌</div><p class="big">Chưa kết nối Supabase</p><p>Xem khung vàng phía trên.</p></div>'; return; }
@@ -350,7 +351,7 @@ function renderGrid(){
   grid.querySelectorAll("[data-fetch]").forEach(b=>b.onclick=e=>{ e.stopPropagation(); runAutoThumb(b.getAttribute("data-fetch")); });
   grid.querySelectorAll("[data-img]").forEach(b=>b.onclick=e=>{ e.stopPropagation(); const id=b.getAttribute("data-img"); pickImage(async d=>{ const v=videos.find(x=>x.id===id); if(v){ v.thumb=d; await patchThumb(id,d); render(); } }); });
   grid.querySelectorAll("[data-del]").forEach(b=>b.onclick=async e=>{ e.stopPropagation(); const id=b.getAttribute("data-del"); videos=videos.filter(x=>x.id!==id); render(); await removeVideo(id); });
-  grid.querySelectorAll(".ct").forEach(c=>c.onclick=e=>{ e.stopPropagation(); activeCat=c.getAttribute("data-tag"); searchTerm=""; $("searchInput").value=""; render(); });
+  grid.querySelectorAll(".ct").forEach(c=>c.onclick=e=>{ e.stopPropagation(); activeCats.clear(); activeCats.add(c.getAttribute("data-tag")); render(); });
 }
 function render(){ renderCats(); renderGrid(); }
 
