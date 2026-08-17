@@ -50,10 +50,12 @@
   .qa-save:active{ background:var(--violet-ink); }
   .qa-save:disabled{ opacity:.45; }
 
-  .browse-h{ display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); font-weight:600; margin:0 0 10px 2px; }
-  .fill-all{ text-transform:none; letter-spacing:0; font-size:11.5px; font-weight:600; color:var(--violet-ink); background:var(--violet-soft); border:1px solid #e2d8fb; padding:5px 11px; border-radius:999px; white-space:nowrap; }
-  .fill-all:active{ background:#e2d8fb; }
-  .fill-all:disabled{ opacity:.6; }
+  .browse-h{ font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); font-weight:600; margin:0 0 10px 2px; }
+  .browse-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }
+  .browse-row .browse-h{ margin:0 0 0 2px; }
+  .fetch-all{ display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; color:var(--violet-ink); background:var(--violet-soft); border:1px solid #DCD2F8; padding:7px 13px; border-radius:999px; white-space:nowrap; }
+  .fetch-all:active{ background:#E2D8FB; }
+  .fetch-all:disabled{ opacity:.65; }
   .catbar{ margin:0 -16px 14px; padding:0 16px; }
   .catlist{ display:grid; grid-auto-flow:column; grid-template-rows:auto auto; grid-auto-columns:max-content; gap:8px; overflow-x:auto; scrollbar-width:none; padding-bottom:2px; }
   .catlist::-webkit-scrollbar{ display:none; }
@@ -166,7 +168,10 @@
     <button class="qa-save" id="save" disabled>Lưu video</button>
   </section>
 
-  <div class="browse-h"><span>↓ Kho của bạn</span><button id="fillAll" class="fill-all">🔄 Lấy ảnh còn thiếu</button></div>
+  <div class="browse-row">
+    <div class="browse-h">↓ Kho của bạn</div>
+    <button class="fetch-all" id="fetchAllBtn" style="display:none">🔄 Lấy ảnh còn thiếu</button>
+  </div>
   <div class="catbar"><nav class="catlist" id="catList"></nav></div>
   <div class="content-h"><h2 id="catTitle">Tất cả <span class="sub" id="catSub"></span></h2></div>
   <div class="search">
@@ -202,14 +207,14 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = window.SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || "";
-const CATEGORIES = ["📖 Storytelling","🎵 Âm thanh","💡 Ý tưởng","💅 Nail","🧑‍💻 Edit style","⭐️ Aesthetic","🧑‍🎨 Design project","👩🏻‍🎨 Design edit","🍰 Food/drink","🕺 Short content","🤣 Funny content","⚡️ Giống luôn","🧑‍🍳 Nấu ăn"];
+const CATEGORIES = ["📖 Storytelling","🎵 Âm thanh","💡 Ý tưởng","💅 Nail","🧑‍💻 Edit style","⭐️ Aesthetic","🧑‍🎨 Design project","👩🏻‍🎨 Design edit","🍰 Food/drink","🕺 Short content","🤣 Funny content","⚡️ Giống luôn"];
 const UNTAGGED = "__untagged__";
 const configured = SUPABASE_URL.startsWith("http") && SUPABASE_ANON_KEY.length > 20;
 const sb = configured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 let videos = [];
 let picked = new Set();
-let activeCats = new Set();
+let activeCat = "all";
 let searchTerm = "";
 const fetching = new Set();
 
@@ -258,27 +263,8 @@ function showNotice(msg){ const n=$("notice"); n.style.display="block"; n.innerH
 
 async function fetchOg(url){ try{ const c=new AbortController(),t=setTimeout(()=>c.abort(),8000); const r=await fetch("https://api.microlink.io/?url="+encodeURIComponent(url),{signal:c.signal}); clearTimeout(t); if(r.ok){ const j=await r.json(); const i=j&&j.data&&j.data.image&&j.data.image.url; if(i)return i; } }catch(e){} return null; }
 async function fetchTT(url){ try{ const c=new AbortController(),t=setTimeout(()=>c.abort(),5000); const r=await fetch("https://www.tiktok.com/oembed?url="+encodeURIComponent(url),{signal:c.signal}); clearTimeout(t); if(r.ok){ const j=await r.json(); if(j.thumbnail_url)return j.thumbnail_url; } }catch(e){} return null; }
-async function fetchNoembed(url){ try{ const c=new AbortController(),t=setTimeout(()=>c.abort(),7000); const r=await fetch("https://noembed.com/embed?url="+encodeURIComponent(url),{signal:c.signal}); clearTimeout(t); if(r.ok){ const j=await r.json(); if(j&&j.thumbnail_url)return j.thumbnail_url; } }catch(e){} return null; }
-async function autoThumb(url,platform){ if(platform==="youtube"){ const id=ytId(url); if(id)return"https://i.ytimg.com/vi/"+id+"/hqdefault.jpg"; } const ne=await fetchNoembed(url); if(ne)return ne; if(platform==="tiktok"){ const tt=await fetchTT(url); if(tt)return tt; } const og=await fetchOg(url); if(og)return og; return null; }
+async function autoThumb(url,platform){ if(platform==="instagram"||platform==="facebook")return null; if(platform==="youtube"){ const id=ytId(url); if(id)return"https://i.ytimg.com/vi/"+id+"/hqdefault.jpg"; } const og=await fetchOg(url); if(og)return og; if(platform==="tiktok"){ const tt=await fetchTT(url); if(tt)return tt; } return null; }
 async function runAutoThumb(id){ const v=videos.find(x=>x.id===id); if(!v||fetching.has(id))return; fetching.add(id); render(); const img=await autoThumb(v.url,v.platform); fetching.delete(id); if(img){ v.thumb=img; await patchThumb(id,img); } render(); }
-const attempted=new Set();
-const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-let filling=false;
-async function autoFillThumbs(){
-  if(filling)return; filling=true;
-  const btn=$("fillAll"); if(btn){ btn.disabled=true; btn.textContent="Đang lấy ảnh…"; }
-  let metaBudget=8;
-  for(const v of videos){
-    if(v.thumb||attempted.has(v.id)||fetching.has(v.id))continue;
-    if(v.platform==="youtube")continue;
-    if(v.platform==="instagram"||v.platform==="facebook"||v.platform==="other"){ if(metaBudget<=0)continue; metaBudget--; }
-    attempted.add(v.id);
-    await runAutoThumb(v.id);
-    await sleep(700);
-  }
-  if(btn){ btn.disabled=false; btn.textContent="🔄 Lấy ảnh còn thiếu"; }
-  filling=false;
-}
 
 function downscale(file,maxW=480,q=0.72){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>{ const im=new Image(); im.onload=()=>{ const s=Math.min(1,maxW/im.width),w=Math.round(im.width*s),h=Math.round(im.height*s); const c=document.createElement("canvas"); c.width=w; c.height=h; c.getContext("2d").drawImage(im,0,0,w,h); res(c.toDataURL("image/jpeg",q)); }; im.onerror=rej; im.src=r.result; }; r.onerror=rej; r.readAsDataURL(file); }); }
 function pickImage(cb){ const i=document.createElement("input"); i.type="file"; i.accept="image/*"; i.onchange=async()=>{ const f=i.files&&i.files[0]; if(!f)return; try{ cb(await downscale(f)); }catch(e){ alert("Không đọc được ảnh."); } }; i.click(); }
@@ -298,7 +284,7 @@ saveBtn.onclick=async()=>{
   saveBtn.disabled=true; saveBtn.textContent="Đang lưu…";
   const row=await addVideo(payload);
   saveBtn.textContent="Lưu video";
-  if(row){ videos.unshift(row); linkInput.value=""; $("note").value=""; picked.clear(); renderQaCats(); activeCats.clear(); render(); runAutoThumb(row.id); }
+  if(row){ videos.unshift(row); linkInput.value=""; $("note").value=""; picked.clear(); renderQaCats(); activeCat="all"; render(); if(row.platform!=="instagram"&&row.platform!=="facebook") runAutoThumb(row.id); }
   else saveBtn.disabled=false;
 };
 linkInput.addEventListener("keydown",e=>{ if(e.key==="Enter")saveBtn.click(); });
@@ -307,19 +293,18 @@ $("note").addEventListener("keydown",e=>{ if(e.key==="Enter")saveBtn.click(); })
 const catList=$("catList");
 function countFor(c){ if(c==="all")return videos.length; if(c===UNTAGGED)return videos.filter(v=>!v.categories||!v.categories.length).length; return videos.filter(v=>v.categories&&v.categories.includes(c)).length; }
 function renderCats(){ catList.innerHTML="";
-  const mk=(label,val,on)=>{ const b=document.createElement("button"); b.className="cat"+(on?" on":""); b.innerHTML='<span>'+esc(label)+'</span><span class="n">'+countFor(val)+'</span>'; b.onclick=()=>{ if(val==="all"){ activeCats.clear(); } else { activeCats.has(val)?activeCats.delete(val):activeCats.add(val); } render(); }; return b; };
-  catList.appendChild(mk("Tất cả","all",activeCats.size===0));
-  CATEGORIES.forEach(t=>catList.appendChild(mk(t,t,activeCats.has(t))));
-  if(countFor(UNTAGGED)>0) catList.appendChild(mk("Chưa phân loại",UNTAGGED,activeCats.has(UNTAGGED)));
+  const mk=(label,val)=>{ const b=document.createElement("button"); b.className="cat"+(activeCat===val?" on":""); b.innerHTML='<span>'+esc(label)+'</span><span class="n">'+countFor(val)+'</span>'; b.onclick=()=>{ activeCat=val; searchTerm=""; $("searchInput").value=""; render(); }; return b; };
+  catList.appendChild(mk("Tất cả","all"));
+  CATEGORIES.forEach(t=>catList.appendChild(mk(t,t)));
+  if(countFor(UNTAGGED)>0) catList.appendChild(mk("Chưa phân loại",UNTAGGED));
 }
 $("searchInput").addEventListener("input",e=>{ searchTerm=e.target.value.toLowerCase(); renderGrid(); });
-function visible(){ return videos.filter(v=>{ let ok; if(activeCats.size===0)ok=true; else { const cats=v.categories||[]; ok=[...activeCats].some(sel=>sel===UNTAGGED?cats.length===0:cats.includes(sel)); } const s=!searchTerm||(v.note||"").toLowerCase().includes(searchTerm)||(v.url||"").toLowerCase().includes(searchTerm); return ok&&s; }); }
+function visible(){ return videos.filter(v=>{ let ok; if(activeCat==="all")ok=true; else if(activeCat===UNTAGGED)ok=!v.categories||!v.categories.length; else ok=v.categories&&v.categories.includes(activeCat); const s=!searchTerm||(v.note||"").toLowerCase().includes(searchTerm)||(v.url||"").toLowerCase().includes(searchTerm); return ok&&s; }); }
 
 const grid=$("grid"), catTitle=$("catTitle"), catSub=$("catSub"), totalCount=$("totalCount");
 function renderGrid(){
   const list=visible();
-  let title; if(activeCats.size===0)title="Tất cả"; else if(activeCats.size===1){ const c=[...activeCats][0]; title=c===UNTAGGED?"Chưa phân loại":c; } else title="Đã chọn "+activeCats.size+" mục";
-  catTitle.childNodes[0].nodeValue=title+" ";
+  catTitle.childNodes[0].nodeValue=(activeCat==="all"?"Tất cả":activeCat===UNTAGGED?"Chưa phân loại":activeCat)+" ";
   catSub.textContent=list.length+" video"; totalCount.textContent=videos.length+" clip";
   grid.innerHTML="";
   if(!configured){ grid.innerHTML='<div class="empty-state"><div class="glyph">🔌</div><p class="big">Chưa kết nối Supabase</p><p>Xem khung vàng phía trên.</p></div>'; return; }
@@ -351,9 +336,33 @@ function renderGrid(){
   grid.querySelectorAll("[data-fetch]").forEach(b=>b.onclick=e=>{ e.stopPropagation(); runAutoThumb(b.getAttribute("data-fetch")); });
   grid.querySelectorAll("[data-img]").forEach(b=>b.onclick=e=>{ e.stopPropagation(); const id=b.getAttribute("data-img"); pickImage(async d=>{ const v=videos.find(x=>x.id===id); if(v){ v.thumb=d; await patchThumb(id,d); render(); } }); });
   grid.querySelectorAll("[data-del]").forEach(b=>b.onclick=async e=>{ e.stopPropagation(); const id=b.getAttribute("data-del"); videos=videos.filter(x=>x.id!==id); render(); await removeVideo(id); });
-  grid.querySelectorAll(".ct").forEach(c=>c.onclick=e=>{ e.stopPropagation(); activeCats.clear(); activeCats.add(c.getAttribute("data-tag")); render(); });
+  grid.querySelectorAll(".ct").forEach(c=>c.onclick=e=>{ e.stopPropagation(); activeCat=c.getAttribute("data-tag"); searchTerm=""; $("searchInput").value=""; render(); });
 }
-function render(){ renderCats(); renderGrid(); }
+function render(){ renderCats(); renderGrid(); updateFetchAll(); }
+
+const fetchAllBtn=$("fetchAllBtn");
+let bulkFetching=false;
+function missingThumbVids(){ return videos.filter(v=>!thumbSrc(v) && v.platform!=="instagram" && v.platform!=="facebook"); }
+function updateFetchAll(){
+  if(bulkFetching) return;
+  const n=missingThumbVids().length;
+  fetchAllBtn.style.display = n ? "" : "none";
+  fetchAllBtn.disabled=false;
+  fetchAllBtn.textContent="🔄 Lấy ảnh còn thiếu ("+n+")";
+}
+fetchAllBtn.onclick=async()=>{
+  if(bulkFetching) return;
+  const list=missingThumbVids();
+  if(!list.length) return;
+  bulkFetching=true; fetchAllBtn.disabled=true;
+  let done=0;
+  fetchAllBtn.textContent="⏳ Đang lấy 0/"+list.length+"…";
+  const queue=list.slice();
+  const worker=async()=>{ while(queue.length){ const v=queue.shift(); await runAutoThumb(v.id); done++; fetchAllBtn.textContent="⏳ Đang lấy "+done+"/"+list.length+"…"; } };
+  await Promise.all([worker(),worker(),worker()]);
+  bulkFetching=false;
+  updateFetchAll();
+};
 
 function subscribe(){ if(!configured)return; let t=null; sb.channel("videos-changes").on("postgres_changes",{event:"*",schema:"public",table:"videos"},()=>{ clearTimeout(t); t=setTimeout(reload,300); }).subscribe(); }
 
@@ -363,13 +372,12 @@ if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js").ca
 $("pvClose").onclick=closePreview;
 $("pvOv").addEventListener("click",e=>{ if(e.target===$("pvOv"))closePreview(); });
 document.addEventListener("keydown",e=>{ if(e.key==="Escape"&&$("pvOv").classList.contains("show"))closePreview(); });
-$("fillAll").onclick=()=>{ videos.forEach(v=>{ if(!v.thumb)attempted.delete(v.id); }); autoFillThumbs(); };
 
 const authOv=$("authOv"), authEmail=$("authEmail"), authPass=$("authPass"), authBtn=$("authBtn"), authErr=$("authErr"), signOutBtn=$("signOutBtn");
 let subscribed=false;
 function showAuth(){ authOv.classList.add("show"); signOutBtn.style.display="none"; }
 function hideAuth(){ authOv.classList.remove("show"); }
-async function onSignedIn(){ hideAuth(); signOutBtn.style.display=""; await reload(); if(!subscribed){ subscribe(); subscribed=true; } autoFillThumbs(); }
+function onSignedIn(){ hideAuth(); signOutBtn.style.display=""; reload(); if(!subscribed){ subscribe(); subscribed=true; } }
 authBtn.onclick=async()=>{ const email=authEmail.value.trim(), password=authPass.value; if(!email||!password)return; authBtn.disabled=true; authBtn.textContent="Đang đăng nhập…"; authErr.textContent=""; const { error }=await sb.auth.signInWithPassword({ email, password }); authBtn.disabled=false; authBtn.textContent="Đăng nhập"; if(error) authErr.textContent="Sai email hoặc mật khẩu. Thử lại nhé."; };
 authPass.addEventListener("keydown",e=>{ if(e.key==="Enter")authBtn.click(); });
 signOutBtn.onclick=async()=>{ await sb.auth.signOut(); videos=[]; render(); showAuth(); };
