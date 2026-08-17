@@ -11,6 +11,7 @@
 <link rel="icon" href="./icon-192.png" />
 <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
 <title>Kho ý tưởng</title>
+<link rel="preconnect" href="https://i.ytimg.com" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -320,7 +321,7 @@ function renderGrid(){
     c.innerHTML=
       '<div class="thumb" data-id="'+v.id+'" title="Xem trước trong app">'+
         '<div class="ph '+v.platform+'">'+phInner+'</div>'+
-        (src?'<img src="'+esc(src)+'" alt="" onerror="this.remove()">':'')+
+        (src?'<img src="'+esc(src)+'" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">':'')+
         '<div class="scrim"></div>'+
         '<span class="pbadge">'+pMark(v.platform)+' '+PLABEL[v.platform]+'</span>'+
         '<button class="imgbtn" data-img="'+v.id+'">🖼 '+(hasThumb?'Đổi':'Ảnh')+'</button>'+
@@ -368,7 +369,7 @@ function subscribe(){ if(!configured)return; let t=null; sb.channel("videos-chan
 
 function extractUrl(s){ if(!s)return""; const m=s.match(/https?:\/\/[^\s]+/); return m?m[0]:s.trim(); }
 function handleShareTarget(){ const p=new URLSearchParams(location.search); const shared=p.get("url")||p.get("text")||p.get("title"); if(shared){ const link=extractUrl(shared); if(link){ linkInput.value=link; updateSave(); linkInput.scrollIntoView({block:"start"}); linkInput.focus(); } history.replaceState(null,"",location.pathname); } }
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js").catch(()=>{}); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("./sw.js").then(reg=>{ reg.update(); let reloaded=false; navigator.serviceWorker.addEventListener("controllerchange",()=>{ if(reloaded)return; reloaded=true; location.reload(); }); }).catch(()=>{}); }
 $("pvClose").onclick=closePreview;
 $("pvOv").addEventListener("click",e=>{ if(e.target===$("pvOv"))closePreview(); });
 document.addEventListener("keydown",e=>{ if(e.key==="Escape"&&$("pvOv").classList.contains("show"))closePreview(); });
