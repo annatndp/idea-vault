@@ -54,9 +54,6 @@
   .browse-h{ font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); font-weight:600; margin:0 0 10px 2px; }
   .browse-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }
   .browse-row .browse-h{ margin:0 0 0 2px; }
-  .fetch-all{ display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; color:var(--violet-ink); background:var(--violet-soft); border:1px solid #DCD2F8; padding:7px 13px; border-radius:999px; white-space:nowrap; }
-  .fetch-all:active{ background:#E2D8FB; }
-  .fetch-all:disabled{ opacity:.65; }
   .catbar{ margin:0 -16px 14px; padding:0 16px; }
   .catlist{ display:grid; grid-auto-flow:column; grid-template-rows:auto auto; grid-auto-columns:max-content; gap:8px; overflow-x:auto; scrollbar-width:none; padding-bottom:2px; }
   .catlist::-webkit-scrollbar{ display:none; }
@@ -65,6 +62,9 @@
   .cat.on{ background:var(--violet); color:#fff; border-color:var(--violet); }
   .cat .n{ font-size:11px; font-weight:700; color:var(--muted); background:#EBE7E1; padding:0 7px; border-radius:999px; min-width:20px; text-align:center; }
   .cat.on .n{ background:rgba(255,255,255,.24); color:#fff; }
+  .fetchcat{ background:var(--violet-soft); border-color:#DCD2F8; color:var(--violet-ink); font-weight:600; }
+  .fetchcat .n{ background:#DCD2F8; color:var(--violet-ink); }
+  .fetchcat:disabled{ opacity:.55; }
 
   .content-h h2{ font-family:"Bricolage Grotesque",sans-serif; font-weight:700; font-size:19px; margin:0 0 11px; display:flex; align-items:baseline; gap:9px; }
   .content-h h2 .sub{ font-family:"Inter"; font-weight:500; font-size:13px; color:var(--muted); }
@@ -85,6 +85,7 @@
   .ph.facebook{ background:linear-gradient(150deg,#3b82f6,#1877F2 60%,#0d5bcd); }
   .ph.other{ background:linear-gradient(150deg,#5a5566,#3d3946); }
   .thumb img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  .thumb .mini{ position:absolute; top:0; left:0; width:200%; height:200%; transform:scale(.5); transform-origin:0 0; border:0; background:#fff; pointer-events:none; }
   .thumb .spin{ width:26px; height:26px; border:3px solid rgba(255,255,255,.34); border-top-color:#fff; border-radius:50%; animation:spin .8s linear infinite; }
   @keyframes spin{ to{ transform:rotate(360deg); } }
   .thumb .retry{ display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:600; color:#fff; background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.42); padding:6px 12px; border-radius:9px; }
@@ -151,7 +152,7 @@
   <header class="top">
     <div class="brand">
       <h1>Kho ý tưởng<span class="dot">.</span></h1>
-      <p class="meta"><span id="totalCount">0 clip</span><span class="dotsep"></span><span id="syncState">Đang kết nối…</span></p>
+      <p class="meta"><span id="totalCount">0 clip</span><span class="dotsep"></span><span id="syncState">Đang kết nối…</span><span class="dotsep"></span><span style="opacity:.65">v4</span></p>
     </div>
     <button class="btn-signout" id="signOutBtn" style="display:none">Đăng xuất</button>
   </header>
@@ -169,10 +170,7 @@
     <button class="qa-save" id="save" disabled>Lưu video</button>
   </section>
 
-  <div class="browse-row">
-    <div class="browse-h">↓ Kho của bạn</div>
-    <button class="fetch-all" id="fetchAllBtn" style="display:none">🔄 Lấy ảnh còn thiếu</button>
-  </div>
+  <div class="browse-h">↓ Kho của bạn — chọn nhiều tag để lọc chính xác hơn</div>
   <div class="catbar"><nav class="catlist" id="catList"></nav></div>
   <div class="content-h"><h2 id="catTitle">Tất cả <span class="sub" id="catSub"></span></h2></div>
   <div class="search">
@@ -215,7 +213,7 @@ const sb = configured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 let videos = [];
 let picked = new Set();
-let activeCat = "all";
+let activeCats = new Set();
 let searchTerm = "";
 const fetching = new Set();
 
@@ -285,7 +283,7 @@ saveBtn.onclick=async()=>{
   saveBtn.disabled=true; saveBtn.textContent="Đang lưu…";
   const row=await addVideo(payload);
   saveBtn.textContent="Lưu video";
-  if(row){ videos.unshift(row); linkInput.value=""; $("note").value=""; picked.clear(); renderQaCats(); activeCat="all"; render(); if(row.platform!=="instagram"&&row.platform!=="facebook") runAutoThumb(row.id); }
+  if(row){ videos.unshift(row); linkInput.value=""; $("note").value=""; picked.clear(); renderQaCats(); activeCats.clear(); render(); if(row.platform!=="instagram"&&row.platform!=="facebook") runAutoThumb(row.id); }
   else saveBtn.disabled=false;
 };
 linkInput.addEventListener("keydown",e=>{ if(e.key==="Enter")saveBtn.click(); });
@@ -293,34 +291,63 @@ $("note").addEventListener("keydown",e=>{ if(e.key==="Enter")saveBtn.click(); })
 
 const catList=$("catList");
 function countFor(c){ if(c==="all")return videos.length; if(c===UNTAGGED)return videos.filter(v=>!v.categories||!v.categories.length).length; return videos.filter(v=>v.categories&&v.categories.includes(c)).length; }
+function resetSearch(){ searchTerm=""; $("searchInput").value=""; }
 function renderCats(){ catList.innerHTML="";
-  const mk=(label,val)=>{ const b=document.createElement("button"); b.className="cat"+(activeCat===val?" on":""); b.innerHTML='<span>'+esc(label)+'</span><span class="n">'+countFor(val)+'</span>'; b.onclick=()=>{ activeCat=val; searchTerm=""; $("searchInput").value=""; render(); }; return b; };
-  catList.appendChild(mk("Tất cả","all"));
-  CATEGORIES.forEach(t=>catList.appendChild(mk(t,t)));
-  if(countFor(UNTAGGED)>0) catList.appendChild(mk("Chưa phân loại",UNTAGGED));
+  const mkBtn=(label,count,on,fn)=>{ const b=document.createElement("button"); b.className="cat"+(on?" on":""); b.innerHTML='<span>'+esc(label)+'</span>'+(count==null?'':'<span class="n">'+count+'</span>'); b.onclick=fn; return b; };
+  catList.appendChild(mkBtn("Tất cả",videos.length,activeCats.size===0,()=>{ activeCats.clear(); resetSearch(); render(); }));
+  catList.appendChild(makeFetchAllBtn());
+  CATEGORIES.forEach(t=>catList.appendChild(mkBtn(t,countFor(t),activeCats.has(t),()=>{ activeCats.delete(UNTAGGED); if(activeCats.has(t))activeCats.delete(t); else activeCats.add(t); resetSearch(); render(); })));
+  if(countFor(UNTAGGED)>0) catList.appendChild(mkBtn("Chưa phân loại",countFor(UNTAGGED),activeCats.has(UNTAGGED),()=>{ const on=activeCats.has(UNTAGGED); activeCats.clear(); if(!on)activeCats.add(UNTAGGED); resetSearch(); render(); }));
+}
+function missingThumbVids(){ return videos.filter(v=>!thumbSrc(v) && v.platform!=="instagram" && v.platform!=="facebook"); }
+let bulkFetching=false, bulkDone=0, bulkTotal=0;
+function makeFetchAllBtn(){
+  const b=document.createElement("button"); b.className="cat fetchcat"; b.id="fetchAllBtn";
+  const n=missingThumbVids().length;
+  if(bulkFetching){ b.innerHTML='<span>⏳ Đang lấy '+bulkDone+'/'+bulkTotal+'…</span>'; b.disabled=true; }
+  else if(n===0){ b.innerHTML='<span>🖼 Ảnh đã đủ</span>'; b.disabled=true; }
+  else { b.innerHTML='<span>🔄 Lấy ảnh</span><span class="n">'+n+'</span>'; b.onclick=startBulkFetch; }
+  return b;
+}
+async function startBulkFetch(){
+  if(bulkFetching) return;
+  const list=missingThumbVids(); if(!list.length) return;
+  bulkFetching=true; bulkDone=0; bulkTotal=list.length; renderCats();
+  const queue=list.slice();
+  const worker=async()=>{ while(queue.length){ const v=queue.shift(); await runAutoThumb(v.id); bulkDone++; const btn=$("fetchAllBtn"); if(btn&&bulkFetching){ btn.innerHTML='<span>⏳ Đang lấy '+bulkDone+'/'+bulkTotal+'…</span>'; btn.disabled=true; } } };
+  await Promise.all([worker(),worker(),worker()]);
+  bulkFetching=false; renderCats();
 }
 $("searchInput").addEventListener("input",e=>{ searchTerm=e.target.value.toLowerCase(); renderGrid(); });
-function visible(){ return videos.filter(v=>{ let ok; if(activeCat==="all")ok=true; else if(activeCat===UNTAGGED)ok=!v.categories||!v.categories.length; else ok=v.categories&&v.categories.includes(activeCat); const s=!searchTerm||(v.note||"").toLowerCase().includes(searchTerm)||(v.url||"").toLowerCase().includes(searchTerm); return ok&&s; }); }
+function visible(){ return videos.filter(v=>{ let ok;
+  if(activeCats.size===0) ok=true;
+  else if(activeCats.has(UNTAGGED)) ok=!v.categories||!v.categories.length;
+  else ok=!!v.categories && Array.from(activeCats).every(t=>v.categories.includes(t));
+  const s=!searchTerm||(v.note||"").toLowerCase().includes(searchTerm)||(v.url||"").toLowerCase().includes(searchTerm);
+  return ok&&s; }); }
 
 const grid=$("grid"), catTitle=$("catTitle"), catSub=$("catSub"), totalCount=$("totalCount");
 function renderGrid(){
   const list=visible();
-  catTitle.childNodes[0].nodeValue=(activeCat==="all"?"Tất cả":activeCat===UNTAGGED?"Chưa phân loại":activeCat)+" ";
+  catTitle.childNodes[0].nodeValue=(activeCats.size===0?"Tất cả":activeCats.has(UNTAGGED)?"Chưa phân loại":Array.from(activeCats).join(" + "))+" ";
   catSub.textContent=list.length+" video"; totalCount.textContent=videos.length+" clip";
   grid.innerHTML="";
   if(!configured){ grid.innerHTML='<div class="empty-state"><div class="glyph">🔌</div><p class="big">Chưa kết nối Supabase</p><p>Xem khung vàng phía trên.</p></div>'; return; }
   if(videos.length===0){ grid.innerHTML='<div class="empty-state"><div class="glyph">🎬</div><p class="big">Kho còn trống</p><p>Dán link ở ô trên để lưu clip đầu tiên.</p></div>'; return; }
-  if(list.length===0){ grid.innerHTML='<div class="empty-state"><div class="glyph">🔍</div><p class="big">Mục này chưa có video</p><p>Lưu clip mới và gắn vào danh mục này.</p></div>'; return; }
+  if(list.length===0){ grid.innerHTML='<div class="empty-state"><div class="glyph">🔍</div><p class="big">Không có video nào khớp</p><p>'+(activeCats.size>1?'Chưa có video nào gắn đủ cả '+activeCats.size+' tag này. Bỏ bớt tag để xem rộng hơn.':'Lưu clip mới và gắn vào danh mục này.')+'</p></div>'; return; }
   list.forEach(v=>{
     const src=thumbSrc(v), hasThumb=!!v.thumb, isFetching=fetching.has(v.id);
+    const emb=(!src&&!isFetching&&(v.platform==="instagram"||v.platform==="facebook"))?embedInfo(v):null;
     let phInner;
     if(isFetching) phInner='<div class="spin"></div><span class="cap">Đang lấy ảnh…</span>';
+    else if(emb) phInner='';
     else if(v.platform==="instagram"||v.platform==="facebook") phInner='<span class="big">'+pMark(v.platform)+'</span><button class="retry" data-img="'+v.id+'">🖼 Thêm ảnh</button>';
     else phInner='<span class="big">'+pMark(v.platform)+'</span><button class="retry" data-fetch="'+v.id+'">🔄 Lấy ảnh</button>';
     const c=document.createElement("div"); c.className="card";
     c.innerHTML=
       '<div class="thumb" data-id="'+v.id+'" title="Xem trước trong app">'+
         '<div class="ph '+v.platform+'">'+phInner+'</div>'+
+        (emb?'<iframe class="mini" src="'+esc(emb.src)+'" loading="lazy" scrolling="no" tabindex="-1" aria-hidden="true"></iframe>':'')+
         (src?'<img src="'+esc(src)+'" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">':'')+
         '<div class="scrim"></div>'+
         '<span class="pbadge">'+pMark(v.platform)+' '+PLABEL[v.platform]+'</span>'+
@@ -337,33 +364,9 @@ function renderGrid(){
   grid.querySelectorAll("[data-fetch]").forEach(b=>b.onclick=e=>{ e.stopPropagation(); runAutoThumb(b.getAttribute("data-fetch")); });
   grid.querySelectorAll("[data-img]").forEach(b=>b.onclick=e=>{ e.stopPropagation(); const id=b.getAttribute("data-img"); pickImage(async d=>{ const v=videos.find(x=>x.id===id); if(v){ v.thumb=d; await patchThumb(id,d); render(); } }); });
   grid.querySelectorAll("[data-del]").forEach(b=>b.onclick=async e=>{ e.stopPropagation(); const id=b.getAttribute("data-del"); videos=videos.filter(x=>x.id!==id); render(); await removeVideo(id); });
-  grid.querySelectorAll(".ct").forEach(c=>c.onclick=e=>{ e.stopPropagation(); activeCat=c.getAttribute("data-tag"); searchTerm=""; $("searchInput").value=""; render(); });
+  grid.querySelectorAll(".ct").forEach(c=>c.onclick=e=>{ e.stopPropagation(); activeCats=new Set([c.getAttribute("data-tag")]); resetSearch(); render(); });
 }
-function render(){ renderCats(); renderGrid(); updateFetchAll(); }
-
-const fetchAllBtn=$("fetchAllBtn");
-let bulkFetching=false;
-function missingThumbVids(){ return videos.filter(v=>!thumbSrc(v) && v.platform!=="instagram" && v.platform!=="facebook"); }
-function updateFetchAll(){
-  if(bulkFetching) return;
-  const n=missingThumbVids().length;
-  fetchAllBtn.style.display = n ? "" : "none";
-  fetchAllBtn.disabled=false;
-  fetchAllBtn.textContent="🔄 Lấy ảnh còn thiếu ("+n+")";
-}
-fetchAllBtn.onclick=async()=>{
-  if(bulkFetching) return;
-  const list=missingThumbVids();
-  if(!list.length) return;
-  bulkFetching=true; fetchAllBtn.disabled=true;
-  let done=0;
-  fetchAllBtn.textContent="⏳ Đang lấy 0/"+list.length+"…";
-  const queue=list.slice();
-  const worker=async()=>{ while(queue.length){ const v=queue.shift(); await runAutoThumb(v.id); done++; fetchAllBtn.textContent="⏳ Đang lấy "+done+"/"+list.length+"…"; } };
-  await Promise.all([worker(),worker(),worker()]);
-  bulkFetching=false;
-  updateFetchAll();
-};
+function render(){ renderCats(); renderGrid(); }
 
 function subscribe(){ if(!configured)return; let t=null; sb.channel("videos-changes").on("postgres_changes",{event:"*",schema:"public",table:"videos"},()=>{ clearTimeout(t); t=setTimeout(reload,300); }).subscribe(); }
 
