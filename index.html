@@ -91,7 +91,6 @@
   .thumb .retry{ display:inline-flex; align-items:center; gap:5px; font-size:11.5px; font-weight:600; color:#fff; background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.42); padding:6px 12px; border-radius:9px; }
   .thumb .scrim{ position:absolute; left:0; right:0; bottom:0; height:44%; background:linear-gradient(to top,rgba(0,0,0,.46),transparent); pointer-events:none; }
   .thumb .pbadge{ position:absolute; bottom:9px; left:9px; display:inline-flex; align-items:center; gap:5px; font-size:10.5px; font-weight:600; padding:3px 9px 3px 8px; border-radius:999px; color:#fff; background:rgba(0,0,0,.34); }
-  .thumb .imgbtn{ position:absolute; top:9px; right:9px; display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:600; color:#fff; background:rgba(0,0,0,.42); padding:5px 9px; border-radius:9px; }
   .card .body{ padding:11px 12px 12px; display:flex; flex-direction:column; gap:8px; flex:1; }
   .card .note{ font-size:13.5px; font-weight:500; line-height:1.36; word-break:break-word; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
   .card .cardtags{ display:flex; flex-wrap:wrap; gap:5px; }
@@ -138,8 +137,6 @@
     .catlist{ display:flex; flex-wrap:wrap; overflow:visible; }
     .grid{ grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:18px; }
     .thumb{ aspect-ratio:4/5; }
-    .thumb .imgbtn{ opacity:0; transition:opacity .14s ease; }
-    .card:hover .thumb .imgbtn{ opacity:1; }
     .card{ transition:transform .14s ease, box-shadow .14s ease; }
     .card:hover{ transform:translateY(-3px); box-shadow:0 2px 4px rgba(25,22,34,.05),0 16px 36px rgba(25,22,34,.11); }
     .card .ct{ cursor:pointer; }
@@ -152,7 +149,7 @@
   <header class="top">
     <div class="brand">
       <h1>Kho ý tưởng<span class="dot">.</span></h1>
-      <p class="meta"><span id="totalCount">0 clip</span><span class="dotsep"></span><span id="syncState">Đang kết nối…</span><span class="dotsep"></span><span style="opacity:.65">v5</span></p>
+      <p class="meta"><span id="totalCount">0 clip</span><span class="dotsep"></span><span id="syncState">Đang kết nối…</span><span class="dotsep"></span><span style="opacity:.65">v7</span></p>
     </div>
     <button class="btn-signout" id="signOutBtn" style="display:none">Đăng xuất</button>
   </header>
@@ -230,7 +227,7 @@ function embedInfo(v){
   const url=v.url||"";
   if(v.platform==="youtube"){ const id=ytId(url); return id?{src:"https://www.youtube.com/embed/"+id, yt:true}:null; }
   if(v.platform==="tiktok"){ const m=url.match(/\/video\/(\d+)/); return m?{src:"https://www.tiktok.com/embed/v2/"+m[1], h:600}:null; }
-  if(v.platform==="instagram"){ const m=url.match(/instagram\.com\/(reels?|p|tv)\/([A-Za-z0-9_-]+)/); if(m){ const type=m[1].indexOf("reel")===0?"reel":m[1]; return {src:"https://www.instagram.com/"+type+"/"+m[2]+"/embed", h:660}; } return null; }
+  if(v.platform==="instagram"){ if(/instagram\.com\/share\//.test(url)) return null; const m=url.match(/instagram\.com\/(?:[A-Za-z0-9_.]+\/)?(reels?|p|tv)\/([A-Za-z0-9_-]+)/); if(m){ const type=m[1].indexOf("reel")===0?"reel":m[1]; return {src:"https://www.instagram.com/"+type+"/"+m[2]+"/embed", h:660}; } return null; }
   if(v.platform==="facebook"){ return {src:"https://www.facebook.com/plugins/video.php?href="+encodeURIComponent(url)+"&show_text=false", h:420}; }
   return null;
 }
@@ -263,7 +260,31 @@ function showNotice(msg){ const n=$("notice"); n.style.display="block"; n.innerH
 
 async function fetchOg(url){ try{ const c=new AbortController(),t=setTimeout(()=>c.abort(),8000); const r=await fetch("https://api.microlink.io/?url="+encodeURIComponent(url),{signal:c.signal}); clearTimeout(t); if(r.ok){ const j=await r.json(); const i=j&&j.data&&j.data.image&&j.data.image.url; if(i)return i; } }catch(e){} return null; }
 async function fetchTT(url){ try{ const c=new AbortController(),t=setTimeout(()=>c.abort(),5000); const r=await fetch("https://www.tiktok.com/oembed?url="+encodeURIComponent(url),{signal:c.signal}); clearTimeout(t); if(r.ok){ const j=await r.json(); if(j.thumbnail_url)return j.thumbnail_url; } }catch(e){} return null; }
-async function autoThumb(url,platform){ if(platform==="instagram"||platform==="facebook")return null; if(platform==="youtube"){ const id=ytId(url); if(id)return"https://i.ytimg.com/vi/"+id+"/hqdefault.jpg"; } if(platform==="tiktok"){ const tt=await fetchTT(url); if(tt)return tt; } const og=await fetchOg(url); if(og)return og; return null; }
+/* Đọc text qua proxy CORS công khai (thử lần lượt 2 proxy) */
+async function proxyText(url){
+  const proxies=[u=>"https://api.allorigins.win/raw?url="+encodeURIComponent(u), u=>"https://corsproxy.io/?url="+encodeURIComponent(u)];
+  for(const p of proxies){ try{
+    const c=new AbortController(),t=setTimeout(()=>c.abort(),10000);
+    const r=await fetch(p(url),{signal:c.signal}); clearTimeout(t);
+    if(r.ok){ const txt=await r.text(); if(txt&&txt.length>100) return txt; }
+  }catch(e){} }
+  return null;
+}
+function igCode(url){ if(/instagram\.com\/share\//.test(url||""))return null; const m=(url||"").match(/instagram\.com\/(?:[A-Za-z0-9_.]+\/)?(reels?|p|tv)\/([A-Za-z0-9_-]+)/); return m?{type:m[1].indexOf("reel")===0?"reel":m[1],code:m[2]}:null; }
+/* Link share/ mù mờ: tải trang qua proxy rồi mò mã reel trong HTML */
+async function igResolveShare(url){ const html=await proxyText(url); if(!html)return null; const m=html.match(/instagram\.com\/(?:[A-Za-z0-9_.]+\/)?(reels?|p|tv)\/([A-Za-z0-9_-]{5,})/); return m?{type:m[1].indexOf("reel")===0?"reel":m[1],code:m[2]}:null; }
+/* Lấy ảnh IG từ trang embed công khai (không cần đăng nhập) */
+async function igThumb(url){
+  let c=igCode(url);
+  if(!c && /instagram\.com\/share\//.test(url||"")) c=await igResolveShare(url);
+  if(!c) return null;
+  const html=await proxyText("https://www.instagram.com/"+c.type+"/"+c.code+"/embed/captioned/");
+  if(!html) return null;
+  const m=html.match(/class="EmbeddedMediaImage"[^>]*src="([^"]+)"/)||html.match(/"display_url"\s*:\s*"([^"]+)"/)||html.match(/property="og:image"\s+content="([^"]+)"/);
+  if(!m) return null;
+  return m[1].replace(/&amp;/g,"&").replace(/\\u0026/g,"&").replace(/\\\//g,"/");
+}
+async function autoThumb(url,platform){ if(platform==="youtube"){ const id=ytId(url); if(id)return"https://i.ytimg.com/vi/"+id+"/hqdefault.jpg"; } if(platform==="tiktok"){ const tt=await fetchTT(url); if(tt)return tt; } if(platform==="instagram"){ const ig=await igThumb(url); if(ig)return ig; } const og=await fetchOg(url); if(og)return og; return null; }
 /* Tải ảnh qua proxy có CORS rồi nén thành dataURL — lưu vĩnh viễn trong DB, không bao giờ hết hạn như link TikTok */
 async function toDataUrl(url){ try{
   const c=new AbortController(),t=setTimeout(()=>c.abort(),12000);
@@ -281,8 +302,6 @@ window.__thumbErr=(id,el)=>{ el.remove(); const v=videos.find(x=>x.id===id); if(
 };
 async function runAutoThumb(id){ const v=videos.find(x=>x.id===id); if(!v||fetching.has(id))return; fetching.add(id); render(); let img=await autoThumb(v.url,v.platform); if(img&&v.platform!=="youtube"){ const d=await toDataUrl(img); if(d)img=d; } fetching.delete(id); if(img){ v.thumb=img; failedThumbs.delete(id); await patchThumb(id,img); } render(); }
 
-function downscale(file,maxW=480,q=0.72){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>{ const im=new Image(); im.onload=()=>{ const s=Math.min(1,maxW/im.width),w=Math.round(im.width*s),h=Math.round(im.height*s); const c=document.createElement("canvas"); c.width=w; c.height=h; c.getContext("2d").drawImage(im,0,0,w,h); res(c.toDataURL("image/jpeg",q)); }; im.onerror=rej; im.src=r.result; }; r.onerror=rej; r.readAsDataURL(file); }); }
-function pickImage(cb){ const i=document.createElement("input"); i.type="file"; i.accept="image/*"; i.onchange=async()=>{ const f=i.files&&i.files[0]; if(!f)return; try{ cb(await downscale(f)); }catch(e){ alert("Không đọc được ảnh."); } }; i.click(); }
 
 const linkInput=$("link"), saveBtn=$("save");
 function updateSave(){ saveBtn.disabled = linkInput.value.trim()===""; }
@@ -299,7 +318,7 @@ saveBtn.onclick=async()=>{
   saveBtn.disabled=true; saveBtn.textContent="Đang lưu…";
   const row=await addVideo(payload);
   saveBtn.textContent="Lưu video";
-  if(row){ videos.unshift(row); linkInput.value=""; $("note").value=""; picked.clear(); renderQaCats(); activeCats.clear(); render(); if(row.platform!=="instagram"&&row.platform!=="facebook") runAutoThumb(row.id); }
+  if(row){ videos.unshift(row); linkInput.value=""; $("note").value=""; picked.clear(); renderQaCats(); activeCats.clear(); render(); if(!(row.platform==="facebook"&&embedInfo(row))) runAutoThumb(row.id); }
   else saveBtn.disabled=false;
 };
 linkInput.addEventListener("keydown",e=>{ if(e.key==="Enter")saveBtn.click(); });
@@ -315,7 +334,10 @@ function renderCats(){ catList.innerHTML="";
   CATEGORIES.forEach(t=>catList.appendChild(mkBtn(t,countFor(t),activeCats.has(t),()=>{ activeCats.delete(UNTAGGED); if(activeCats.has(t))activeCats.delete(t); else activeCats.add(t); resetSearch(); render(); })));
   if(countFor(UNTAGGED)>0) catList.appendChild(mkBtn("Chưa phân loại",countFor(UNTAGGED),activeCats.has(UNTAGGED),()=>{ const on=activeCats.has(UNTAGGED); activeCats.clear(); if(!on)activeCats.add(UNTAGGED); resetSearch(); render(); }));
 }
-function missingThumbVids(){ return videos.filter(v=>(!thumbSrc(v)||failedThumbs.has(v.id)) && v.platform!=="instagram" && v.platform!=="facebook"); }
+function missingThumbVids(){ return videos.filter(v=>{
+  if(v.platform==="facebook"){ return (!thumbSrc(v)||failedThumbs.has(v.id)) && !embedInfo(v); }
+  return !thumbSrc(v)||failedThumbs.has(v.id);
+}); }
 let bulkFetching=false, bulkDone=0, bulkTotal=0, autoFetchDone=false;
 function makeFetchAllBtn(){
   const b=document.createElement("button"); b.className="cat fetchcat"; b.id="fetchAllBtn";
@@ -352,13 +374,12 @@ function renderGrid(){
   if(videos.length===0){ grid.innerHTML='<div class="empty-state"><div class="glyph">🎬</div><p class="big">Kho còn trống</p><p>Dán link ở ô trên để lưu clip đầu tiên.</p></div>'; return; }
   if(list.length===0){ grid.innerHTML='<div class="empty-state"><div class="glyph">🔍</div><p class="big">Không có video nào khớp</p><p>'+(activeCats.size>1?'Chưa có video nào gắn đủ cả '+activeCats.size+' tag này. Bỏ bớt tag để xem rộng hơn.':'Lưu clip mới và gắn vào danh mục này.')+'</p></div>'; return; }
   list.forEach(v=>{
-    const src=thumbSrc(v), hasThumb=!!v.thumb, isFetching=fetching.has(v.id);
+    const src=thumbSrc(v), isFetching=fetching.has(v.id);
     const emb=(!src&&!isFetching&&(v.platform==="instagram"||v.platform==="facebook"))?embedInfo(v):null;
     let phInner;
     if(isFetching) phInner='<div class="spin"></div><span class="cap">Đang lấy ảnh…</span>';
     else if(emb) phInner='';
-    else if(v.platform==="instagram"||v.platform==="facebook") phInner='<span class="big">'+pMark(v.platform)+'</span><button class="retry" data-img="'+v.id+'">🖼 Thêm ảnh</button>';
-    else phInner='<span class="big">'+pMark(v.platform)+'</span><button class="retry" data-fetch="'+v.id+'">🔄 Lấy ảnh</button>';
+    else phInner='<span class="big">'+pMark(v.platform)+'</span>';
     const c=document.createElement("div"); c.className="card";
     c.innerHTML=
       '<div class="thumb" data-id="'+v.id+'" title="Xem trước trong app">'+
@@ -367,7 +388,6 @@ function renderGrid(){
         (src?'<img src="'+esc(src)+'" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="window.__thumbErr(\''+v.id+'\',this)">':'')+
         '<div class="scrim"></div>'+
         '<span class="pbadge">'+pMark(v.platform)+' '+PLABEL[v.platform]+'</span>'+
-        '<button class="imgbtn" data-img="'+v.id+'">🖼 '+(hasThumb?'Đổi':'Ảnh')+'</button>'+
       '</div>'+
       '<div class="body">'+
         (v.note?'<div class="note">'+esc(v.note)+'</div>':'')+
@@ -376,9 +396,7 @@ function renderGrid(){
       '</div>';
     grid.appendChild(c);
   });
-  grid.querySelectorAll(".thumb").forEach(t=>t.onclick=e=>{ if(e.target.closest("[data-img]")||e.target.closest("[data-fetch]"))return; const v=videos.find(x=>x.id===t.getAttribute("data-id")); if(v)openPreview(v); });
-  grid.querySelectorAll("[data-fetch]").forEach(b=>b.onclick=e=>{ e.stopPropagation(); runAutoThumb(b.getAttribute("data-fetch")); });
-  grid.querySelectorAll("[data-img]").forEach(b=>b.onclick=e=>{ e.stopPropagation(); const id=b.getAttribute("data-img"); pickImage(async d=>{ const v=videos.find(x=>x.id===id); if(v){ v.thumb=d; await patchThumb(id,d); render(); } }); });
+  grid.querySelectorAll(".thumb").forEach(t=>t.onclick=()=>{ const v=videos.find(x=>x.id===t.getAttribute("data-id")); if(v)openPreview(v); });
   grid.querySelectorAll("[data-del]").forEach(b=>b.onclick=async e=>{ e.stopPropagation(); const id=b.getAttribute("data-del"); videos=videos.filter(x=>x.id!==id); render(); await removeVideo(id); });
   grid.querySelectorAll(".ct").forEach(c=>c.onclick=e=>{ e.stopPropagation(); activeCats=new Set([c.getAttribute("data-tag")]); resetSearch(); render(); });
 }
