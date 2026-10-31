@@ -99,6 +99,16 @@
   .card .date{ font-size:11px; color:var(--muted); }
   .card .del{ display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:9px; color:#AC4A4A; font-size:14px; border:1px solid var(--line); background:#fff; }
   .card .del:active{ background:#FCEDED; border-color:#f0c9c9; }
+  .card .acts{ display:flex; gap:6px; }
+  .card .edit{ display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:9px; font-size:14px; border:1px solid var(--line); background:#fff; }
+  .card .edit:active{ background:var(--violet-soft); border-color:#DCD2F8; }
+  .tg-ov{ position:fixed; inset:0; background:rgba(20,16,30,.5); display:none; align-items:center; justify-content:center; padding:16px; z-index:95; }
+  .tg-ov.show{ display:flex; }
+  .tg-box{ background:var(--surface); border-radius:18px; width:min(380px,94vw); padding:16px; box-shadow:var(--shadow); }
+  .tg-head{ display:flex; align-items:center; justify-content:space-between; font-weight:600; font-size:15px; margin-bottom:12px; }
+  .tg-head button{ font-size:15px; padding:4px 9px; border-radius:8px; color:var(--muted); }
+  .tg-box .qa-cats{ margin-bottom:14px; }
+  .qa-chip.old{ border-style:dashed; }
 
   .empty-state{ text-align:center; padding:52px 22px; border:1.5px dashed var(--line); border-radius:20px; background:#fff; grid-column:1/-1; }
   .empty-state .glyph{ font-size:32px; margin-bottom:10px; }
@@ -185,6 +195,14 @@
   </div>
 </div>
 
+<div class="tg-ov" id="tgOv">
+  <div class="tg-box">
+    <div class="tg-head"><span>Sửa tag</span><button id="tgClose" aria-label="Đóng">✕</button></div>
+    <div class="qa-cats" id="tgCats"></div>
+    <button class="qa-save" id="tgSave">Lưu tag</button>
+  </div>
+</div>
+
 <div class="auth-ov show" id="authOv">
   <div class="auth-card">
     <div class="auth-logo">🔖</div>
@@ -203,8 +221,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = window.SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || "";
-const CATEGORIES = ["📖 Storytelling","🎵 Âm thanh","💡 Ý tưởng","💅 Nail","🧑‍💻 Edit style","⭐️ Aesthetic","🧑‍🎨 Design project","👩🏻‍🎨 Design edit","🍰 Food/drink","🕺 Short content","🤣 Funny content","⚡️ Giống luôn"];
+const CATEGORIES = ["💡 Ý tưởng","🎬 Edit / Visual","🎨 Design","💅 Nail","🍜 Food Visual","⚡️ Giống luôn"];
+// Old tag → new tag. Saved videos are moved over once, on load.
+const RENAMED = {"🧑‍🎨 Design project":"🎨 Design","👩🏻‍🎨 Design edit":"🎨 Design"};
 const UNTAGGED = "__untagged__";
+const OLDTAGS = "__oldtags__";
+const hasOldTag = v => !!v.categories && v.categories.some(t=>!CATEGORIES.includes(t));
 const configured = SUPABASE_URL.startsWith("http") && SUPABASE_ANON_KEY.length > 20;
 const sb = configured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
@@ -248,6 +270,7 @@ async function reload(){
     const { data, error } = await sb.from("videos").select("*").order("created_at",{ascending:false});
     if(error) throw error;
     videos = data || [];
+    renameTags();
     $("syncState").innerHTML='<span class="synced">● Đã đồng bộ</span>';
     render();
     if(!autoFetchDone){ autoFetchDone=true; setTimeout(()=>{ if(missingThumbVids().length) startBulkFetch(); },400); }
@@ -256,6 +279,8 @@ async function reload(){
 async function addVideo(v){ const { data, error } = await sb.from("videos").insert(v).select().single(); if(error){ alert("Lưu thất bại: "+error.message); return null; } return data; }
 async function removeVideo(id){ const { error } = await sb.from("videos").delete().eq("id",id); if(error)console.error(error); }
 async function patchThumb(id,thumb){ const { error } = await sb.from("videos").update({thumb}).eq("id",id); if(error)console.error(error); }
+async function patchCats(id,categories){ const { error } = await sb.from("videos").update({categories}).eq("id",id); if(error)console.error(error); }
+function renameTags(){ videos.forEach(v=>{ if(!v.categories||!v.categories.some(t=>RENAMED[t]))return; v.categories=Array.from(new Set(v.categories.map(t=>RENAMED[t]||t))); patchCats(v.id,v.categories); }); }
 function showNotice(msg){ const n=$("notice"); n.style.display="block"; n.innerHTML=msg||'<b>Chưa kết nối Supabase.</b> Dán URL + anon key vào config.js rồi tải lên lại.'; $("syncState").textContent="Chưa cấu hình"; }
 
 async function fetchOg(url){ try{ const c=new AbortController(),t=setTimeout(()=>c.abort(),8000); const r=await fetch("https://api.microlink.io/?url="+encodeURIComponent(url),{signal:c.signal}); clearTimeout(t); if(r.ok){ const j=await r.json(); const i=j&&j.data&&j.data.image&&j.data.image.url; if(i)return i; } }catch(e){} return null; }
@@ -325,14 +350,15 @@ linkInput.addEventListener("keydown",e=>{ if(e.key==="Enter")saveBtn.click(); })
 $("note").addEventListener("keydown",e=>{ if(e.key==="Enter")saveBtn.click(); });
 
 const catList=$("catList");
-function countFor(c){ if(c==="all")return videos.length; if(c===UNTAGGED)return videos.filter(v=>!v.categories||!v.categories.length).length; return videos.filter(v=>v.categories&&v.categories.includes(c)).length; }
+function countFor(c){ if(c==="all")return videos.length; if(c===UNTAGGED)return videos.filter(v=>!v.categories||!v.categories.length).length; if(c===OLDTAGS)return videos.filter(hasOldTag).length; return videos.filter(v=>v.categories&&v.categories.includes(c)).length; }
 function resetSearch(){ searchTerm=""; $("searchInput").value=""; }
 function renderCats(){ catList.innerHTML="";
   const mkBtn=(label,count,on,fn)=>{ const b=document.createElement("button"); b.className="cat"+(on?" on":""); b.innerHTML='<span>'+esc(label)+'</span>'+(count==null?'':'<span class="n">'+count+'</span>'); b.onclick=fn; return b; };
   catList.appendChild(mkBtn("Tất cả",videos.length,activeCats.size===0,()=>{ activeCats.clear(); resetSearch(); render(); }));
   catList.appendChild(makeFetchAllBtn());
-  CATEGORIES.forEach(t=>catList.appendChild(mkBtn(t,countFor(t),activeCats.has(t),()=>{ activeCats.delete(UNTAGGED); if(activeCats.has(t))activeCats.delete(t); else activeCats.add(t); resetSearch(); render(); })));
+  CATEGORIES.forEach(t=>catList.appendChild(mkBtn(t,countFor(t),activeCats.has(t),()=>{ activeCats.delete(UNTAGGED); activeCats.delete(OLDTAGS); if(activeCats.has(t))activeCats.delete(t); else activeCats.add(t); resetSearch(); render(); })));
   if(countFor(UNTAGGED)>0) catList.appendChild(mkBtn("Chưa phân loại",countFor(UNTAGGED),activeCats.has(UNTAGGED),()=>{ const on=activeCats.has(UNTAGGED); activeCats.clear(); if(!on)activeCats.add(UNTAGGED); resetSearch(); render(); }));
+  if(countFor(OLDTAGS)>0) catList.appendChild(mkBtn("Tag cũ",countFor(OLDTAGS),activeCats.has(OLDTAGS),()=>{ const on=activeCats.has(OLDTAGS); activeCats.clear(); if(!on)activeCats.add(OLDTAGS); resetSearch(); render(); }));
 }
 function missingThumbVids(){ return videos.filter(v=>{
   if(v.platform==="facebook"){ return (!thumbSrc(v)||failedThumbs.has(v.id)) && !embedInfo(v); }
@@ -360,6 +386,7 @@ $("searchInput").addEventListener("input",e=>{ searchTerm=e.target.value.toLower
 function visible(){ return videos.filter(v=>{ let ok;
   if(activeCats.size===0) ok=true;
   else if(activeCats.has(UNTAGGED)) ok=!v.categories||!v.categories.length;
+  else if(activeCats.has(OLDTAGS)) ok=hasOldTag(v);
   else ok=!!v.categories && Array.from(activeCats).every(t=>v.categories.includes(t));
   const s=!searchTerm||(v.note||"").toLowerCase().includes(searchTerm)||(v.url||"").toLowerCase().includes(searchTerm);
   return ok&&s; }); }
@@ -367,7 +394,7 @@ function visible(){ return videos.filter(v=>{ let ok;
 const grid=$("grid"), catTitle=$("catTitle"), catSub=$("catSub"), totalCount=$("totalCount");
 function renderGrid(){
   const list=visible();
-  catTitle.childNodes[0].nodeValue=(activeCats.size===0?"Tất cả":activeCats.has(UNTAGGED)?"Chưa phân loại":Array.from(activeCats).join(" + "))+" ";
+  catTitle.childNodes[0].nodeValue=(activeCats.size===0?"Tất cả":activeCats.has(UNTAGGED)?"Chưa phân loại":activeCats.has(OLDTAGS)?"Tag cũ":Array.from(activeCats).join(" + "))+" ";
   catSub.textContent=list.length+" video"; totalCount.textContent=videos.length+" clip";
   grid.innerHTML="";
   if(!configured){ grid.innerHTML='<div class="empty-state"><div class="glyph">🔌</div><p class="big">Chưa kết nối Supabase</p><p>Xem khung vàng phía trên.</p></div>'; return; }
@@ -392,14 +419,25 @@ function renderGrid(){
       '<div class="body">'+
         (v.note?'<div class="note">'+esc(v.note)+'</div>':'')+
         ((v.categories&&v.categories.length)?'<div class="cardtags">'+v.categories.map(t=>'<span class="ct" data-tag="'+esc(t)+'">'+esc(t)+'</span>').join('')+'</div>':'')+
-        '<div class="cardfoot"><span class="date">'+fmtDate(v.created_at)+'</span><button class="del" data-del="'+v.id+'" title="Xoá">🗑</button></div>'+
+        '<div class="cardfoot"><span class="date">'+fmtDate(v.created_at)+'</span><span class="acts"><button class="edit" data-edit="'+v.id+'" title="Sửa tag">🏷</button><button class="del" data-del="'+v.id+'" title="Xoá">🗑</button></span></div>'+
       '</div>';
     grid.appendChild(c);
   });
   grid.querySelectorAll(".thumb").forEach(t=>t.onclick=()=>{ const v=videos.find(x=>x.id===t.getAttribute("data-id")); if(v)openPreview(v); });
   grid.querySelectorAll("[data-del]").forEach(b=>b.onclick=async e=>{ e.stopPropagation(); const id=b.getAttribute("data-del"); videos=videos.filter(x=>x.id!==id); render(); await removeVideo(id); });
   grid.querySelectorAll(".ct").forEach(c=>c.onclick=e=>{ e.stopPropagation(); activeCats=new Set([c.getAttribute("data-tag")]); resetSearch(); render(); });
+  grid.querySelectorAll("[data-edit]").forEach(b=>b.onclick=e=>{ e.stopPropagation(); const v=videos.find(x=>x.id===b.getAttribute("data-edit")); if(v)openTagEditor(v); });
 }
+
+// Tag editor: the 6 tags, plus any old tags this video still has (dashed) so they can be removed.
+let tgVideo=null, tgPicked=new Set();
+function renderTgCats(){ const box=$("tgCats"); box.innerHTML=""; const olds=(tgVideo.categories||[]).filter(t=>!CATEGORIES.includes(t));
+  CATEGORIES.concat(olds).forEach(c=>{ const b=document.createElement("button"); b.className="qa-chip"+(tgPicked.has(c)?" on":"")+(olds.includes(c)?" old":""); b.textContent=c; b.onclick=()=>{ tgPicked.has(c)?tgPicked.delete(c):tgPicked.add(c); renderTgCats(); }; box.appendChild(b); }); }
+function openTagEditor(v){ tgVideo=v; tgPicked=new Set(v.categories||[]); renderTgCats(); $("tgOv").classList.add("show"); }
+function closeTagEditor(){ $("tgOv").classList.remove("show"); tgVideo=null; }
+$("tgSave").onclick=()=>{ const v=tgVideo; if(!v)return; v.categories=Array.from(tgPicked); closeTagEditor(); render(); patchCats(v.id,v.categories); };
+$("tgClose").onclick=closeTagEditor;
+$("tgOv").addEventListener("click",e=>{ if(e.target===$("tgOv"))closeTagEditor(); });
 function render(){ renderCats(); renderGrid(); }
 
 function subscribe(){ if(!configured)return; let t=null; sb.channel("videos-changes").on("postgres_changes",{event:"*",schema:"public",table:"videos"},()=>{ clearTimeout(t); t=setTimeout(reload,300); }).subscribe(); }
