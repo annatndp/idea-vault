@@ -208,7 +208,7 @@
     <div class="auth-logo">🔖</div>
     <h2>Kho ý tưởng</h2>
     <p class="auth-sub">Đăng nhập để mở kho của bạn</p>
-    <input type="email" id="authEmail" placeholder="Email" autocomplete="username" />
+    <input type="text" id="authEmail" placeholder="Tên đăng nhập" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" />
     <input type="password" id="authPass" placeholder="Mật khẩu" autocomplete="current-password" />
     <button class="auth-btn" id="authBtn">Đăng nhập</button>
     <p class="auth-err" id="authErr"></p>
@@ -454,7 +454,9 @@ let subscribed=false;
 function showAuth(){ authOv.classList.add("show"); signOutBtn.style.display="none"; }
 function hideAuth(){ authOv.classList.remove("show"); }
 function onSignedIn(){ hideAuth(); signOutBtn.style.display=""; reload(); if(!subscribed){ subscribe(); subscribed=true; } }
-authBtn.onclick=async()=>{ const email=authEmail.value.trim(), password=authPass.value; if(!email||!password)return; authBtn.disabled=true; authBtn.textContent="Đang đăng nhập…"; authErr.textContent=""; const { error }=await sb.auth.signInWithPassword({ email, password }); authBtn.disabled=false; authBtn.textContent="Đăng nhập"; if(error) authErr.textContent="Sai email hoặc mật khẩu. Thử lại nhé."; };
+// Short login names → the Supabase account email. A full email still works too.
+const USERS = { anna:"anna.tndp@gmail.com" };
+authBtn.onclick=async()=>{ const name=authEmail.value.trim().toLowerCase(), email=USERS[name]||name, password=authPass.value; if(!email||!password)return; authBtn.disabled=true; authBtn.textContent="Đang đăng nhập…"; authErr.textContent=""; const { error }=await sb.auth.signInWithPassword({ email, password }); authBtn.disabled=false; authBtn.textContent="Đăng nhập"; if(error) authErr.textContent="Sai tên đăng nhập hoặc mật khẩu. Thử lại nhé."; };
 authPass.addEventListener("keydown",e=>{ if(e.key==="Enter")authBtn.click(); });
 signOutBtn.onclick=async()=>{ await sb.auth.signOut(); videos=[]; render(); showAuth(); };
 
