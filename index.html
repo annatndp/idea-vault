@@ -222,10 +222,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = window.SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || "";
-const CATEGORIES = ["💡 Ý tưởng","🎬 Edit / Visual","🎨 Design","💅 Nail","🍜 Food Visual","⚡️ Giống luôn"];
-// On load, old tags are renamed (RENAMED) and any tag not in CATEGORIES is removed from saved videos.
+const CATEGORIES = ["💅 Nail","🎨 Design","🍜 Food","🎥 Vlog / Daily life","💼 9-5 & Career","💄 Beauty / Skincare","📱 Content creator","⚡️ Giống luôn"];
+// On load, old tags are renamed (RENAMED) and any tag not in CATEGORIES (or KEPT) is removed from saved videos.
 // So taking a tag out of CATEGORIES clears it from every video.
-const RENAMED = {"🧑‍🎨 Design project":"🎨 Design","👩🏻‍🎨 Design edit":"🎨 Design"};
+const RENAMED = {"🧑‍🎨 Design project":"🎨 Design","👩🏻‍🎨 Design edit":"🎨 Design","🍜 Food Visual":"🍜 Food"};
+// No longer offered, but not removed here: Mise turns them into "what to take from it" and clears them itself.
+const KEPT = ["🎬 Edit / Visual","💡 Ý tưởng"];
 const UNTAGGED = "__untagged__";
 const configured = SUPABASE_URL.startsWith("http") && SUPABASE_ANON_KEY.length > 20;
 const sb = configured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
@@ -280,7 +282,7 @@ async function addVideo(v){ const { data, error } = await sb.from("videos").inse
 async function removeVideo(id){ const { error } = await sb.from("videos").delete().eq("id",id); if(error)console.error(error); }
 async function patchThumb(id,thumb){ const { error } = await sb.from("videos").update({thumb}).eq("id",id); if(error)console.error(error); }
 async function patchVideo(id,fields){ const { error } = await sb.from("videos").update(fields).eq("id",id); if(error)console.error(error); }
-function cleanTags(){ videos.forEach(v=>{ if(!v.categories)return; const next=Array.from(new Set(v.categories.map(t=>RENAMED[t]||t))).filter(t=>CATEGORIES.includes(t)); if(next.length===v.categories.length&&next.every((t,i)=>t===v.categories[i]))return; v.categories=next; patchVideo(v.id,{categories:next}); }); }
+function cleanTags(){ videos.forEach(v=>{ if(!v.categories)return; const next=Array.from(new Set(v.categories.map(t=>RENAMED[t]||t))).filter(t=>CATEGORIES.includes(t)||KEPT.includes(t)); if(next.length===v.categories.length&&next.every((t,i)=>t===v.categories[i]))return; v.categories=next; patchVideo(v.id,{categories:next}); }); }
 function showNotice(msg){ const n=$("notice"); n.style.display="block"; n.innerHTML=msg||'<b>Chưa kết nối Supabase.</b> Dán URL + anon key vào config.js rồi tải lên lại.'; $("syncState").textContent="Chưa cấu hình"; }
 
 async function fetchOg(url){ try{ const c=new AbortController(),t=setTimeout(()=>c.abort(),8000); const r=await fetch("https://api.microlink.io/?url="+encodeURIComponent(url),{signal:c.signal}); clearTimeout(t); if(r.ok){ const j=await r.json(); const i=j&&j.data&&j.data.image&&j.data.image.url; if(i)return i; } }catch(e){} return null; }
